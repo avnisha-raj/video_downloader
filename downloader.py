@@ -1,61 +1,32 @@
-import streamlit as st
-import yt_dlp
+
+!pip install -U yt-dlp
+!apt install ffmpeg -y
+
 import os
+import zipfile
 
-# Create downloads folder
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+download_path = "/content/YouTubeDownloads"
+os.makedirs(download_path, exist_ok=True)
 
-def sanitize_url(url: str) -> str:
-    """Convert Shorts URL to normal watch URL if needed."""
-    if "shorts/" in url:
-        video_id = url.split("shorts/")[-1].split("?")[0]
-        return f"https://www.youtube.com/watch?v={video_id}"
-    return url
+link = input("Enter YouTube video or playlist URL: ").strip()
+file_format = input("Enter format (mp4/mp3): ").strip().lower()
 
-def download_video(url, fmt):
-    url = sanitize_url(url)
-    
-    # yt-dlp options
-    ydl_opts = {
-        "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-        "merge_output_format": fmt,
-        "format": "bestvideo+bestaudio/best" if fmt == "mp4" else "bestaudio/best",
-        "quiet": True,
-        "noprogress": True
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            # Rename if merge_output_format changed extension
-            if not filename.endswith(fmt):
-                base = os.path.splitext(filename)[0]
-                filename = f"{base}.{fmt}"
-            return filename
-    except Exception as e:
-        st.error(f"Download failed: {e}")
-        return None
+if file_format == "mp3":
+    ytdlp_cmd = f'yt-dlp -x --audio-format mp3 --ffmpeg-location /usr/bin --fragment-retries 10 --no-abort-on-error -o "{download_path}/%(title)s.%(ext)s" "{link}"'
+else:
+    # Limit resolution to 720p for faster downloads in Colab
+    ytdlp_cmd = f'yt-dlp -f "bestvideo[height<=720]+bestaudio/best[height<=720]" --merge-output-format mp4 --ffmpeg-location /usr/bin --fragment-retries 10 --no-abort-on-error -o "{download_path}/%(title)s.%(ext)s" "{link}"'
 
-# Streamlit UI
-st.title("📥 YouTube Video / Audio Downloader")
+os.system(ytdlp_cmd)
 
-video_url = st.text_input("Enter YouTube Video or Shorts URL")
-format_choice = st.radio("Select format:", ["mp4", "mp3"])
-if st.button("Download"):
-    if not video_url.strip():
-        st.warning("Please enter a valid YouTube URL")
-    else:
-        with st.spinner("Downloading... Please wait"):
-            file_path = download_video(video_url.strip(), format_choice)
-        
-        if file_path and os.path.exists(file_path):
-            st.success("✅ Download completed!")
-            with open(file_path, "rb") as f:
-                st.download_button(
-                    label="⬇ Download File",
-                    data=f,
-                    file_name=os.path.basename(file_path),
-                    mime="video/mp4" if format_choice == "mp4" else "audio/mpeg"
-                )
+# Zip results
+zip_file = "/content/YouTubeDownloads.zip"
+with zipfile.ZipFile(zip_file, 'w') as zipf:
+    for root, dirs, files in os.walk(download_path):
+        for file in files:
+            zipf.write(os.path.join(root, file), file)
+
+print("\n Download complete & merged successfully!")
+print(f" Folder: {download_path}")
+print(f" ZIP: {zip_file}")
+print("➡ In Colab's left panel, right-click the ZIP and choose 'Download'.")
